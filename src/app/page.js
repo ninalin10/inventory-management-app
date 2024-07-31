@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Box, Stack, Typography, Button, Modal, TextField } from '@mui/material'
+import { Box, Stack, Typography, Button, Modal, TextField, MenuItem, Select, FormControl, InputLabel, Card, CardContent, CardActions, IconButton } from '@mui/material'
+import { Delete } from '@mui/icons-material'
 import { firestore } from './firebase';
 import {
   collection,
@@ -12,6 +13,7 @@ import {
   deleteDoc,
   getDoc,
 } from 'firebase/firestore'
+import styles from './page.module.css' // Adjust the import if needed
 
 const style = {
   position: 'absolute',
@@ -32,20 +34,17 @@ export default function Home() {
   const [inventory, setInventory] = useState([])
   const [open, setOpen] = useState(false)
   const [itemName, setItemName] = useState('')
+  const [category, setCategory] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
 
   const updateInventory = async () => {
-    try {
-      const snapshot = query(collection(firestore, 'inventory'))
-      const docs = await getDocs(snapshot)
-      const inventoryList = []
-      docs.forEach((doc) => {
-        inventoryList.push({ name: doc.id, ...doc.data() })
-      })
-      console.log('Inventory List:', inventoryList); // Add this line
-      setInventory(inventoryList)
-    } catch (error) {
-      console.error('Error fetching inventory:', error);
-    }
+    const snapshot = query(collection(firestore, 'inventory'))
+    const docs = await getDocs(snapshot)
+    const inventoryList = []
+    docs.forEach((doc) => {
+      inventoryList.push({ name: doc.id, ...doc.data() })
+    })
+    setInventory(inventoryList)
   }
 
   useEffect(() => {
@@ -53,43 +52,40 @@ export default function Home() {
   }, [])
 
   const addItem = async () => {
-    try {
-      if (!itemName.trim()) return; // Prevent adding empty items
-      const docRef = doc(collection(firestore, 'inventory'), itemName)
-      const docSnap = await getDoc(docRef)
-      if (docSnap.exists()) {
-        const { quantity } = docSnap.data()
-        await setDoc(docRef, { quantity: quantity + 1 })
-      } else {
-        await setDoc(docRef, { quantity: 1 })
-      }
-      setItemName('')
-      await updateInventory()
-    } catch (error) {
-      console.error('Error adding item:', error);
+    if (!itemName.trim() || !category.trim()) return; // Prevent adding empty items
+    const docRef = doc(collection(firestore, 'inventory'), itemName)
+    const docSnap = await getDoc(docRef)
+    if (docSnap.exists()) {
+      const { quantity } = docSnap.data()
+      await setDoc(docRef, { quantity: quantity + 1, category })
+    } else {
+      await setDoc(docRef, { quantity: 1, category })
     }
+    setItemName('')
+    setCategory('')
+    await updateInventory()
   }
 
   const removeItem = async (item) => {
-    try {
-      const docRef = doc(collection(firestore, 'inventory'), item)
-      const docSnap = await getDoc(docRef)
-      if (docSnap.exists()) {
-        const { quantity } = docSnap.data()
-        if (quantity === 1) {
-          await deleteDoc(docRef)
-        } else {
-          await setDoc(docRef, { quantity: quantity - 1 })
-        }
+    const docRef = doc(collection(firestore, 'inventory'), item)
+    const docSnap = await getDoc(docRef)
+    if (docSnap.exists()) {
+      const { quantity } = docSnap.data()
+      if (quantity === 1) {
+        await deleteDoc(docRef)
+      } else {
+        await setDoc(docRef, { quantity: quantity - 1 })
       }
-      await updateInventory()
-    } catch (error) {
-      console.error('Error removing item:', error);
     }
+    await updateInventory()
   }
 
   const handleOpen = () => setOpen(true)
   const handleClose = () => setOpen(false)
+
+  const filteredInventory = inventory.filter(item =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase())
+  )
 
   return (
     <Box
@@ -111,7 +107,7 @@ export default function Home() {
           <Typography id="modal-modal-title" variant="h6" component="h2">
             Add Item
           </Typography>
-          <Stack width="100%" direction="row" spacing={2}>
+          <Stack width="100%" direction="column" spacing={2}>
             <TextField
               id="outlined-basic"
               label="Item"
@@ -120,11 +116,26 @@ export default function Home() {
               value={itemName}
               onChange={(e) => setItemName(e.target.value)}
             />
+            <FormControl fullWidth>
+              <InputLabel id="category-select-label">Category</InputLabel>
+              <Select
+                labelId="category-select-label"
+                id="category-select"
+                value={category}
+                label="Category"
+                onChange={(e) => setCategory(e.target.value)}
+              >
+                <MenuItem value={'Food'}>Food</MenuItem>
+                <MenuItem value={'Electronics'}>Electronics</MenuItem>
+                <MenuItem value={'Clothing'}>Clothing</MenuItem>
+                {/* Add more categories as needed */}
+              </Select>
+            </FormControl>
             <Button
               variant="outlined"
               onClick={() => {
-                addItem(); // Call without arguments
-                handleClose();
+                addItem()
+                handleClose()
               }}
             >
               Add
@@ -135,9 +146,18 @@ export default function Home() {
       <Button variant="contained" onClick={handleOpen}>
         Add New Item
       </Button>
-      <Box border="1px solid #333">
+      <TextField
+        id="search-bar"
+        label="Search"
+        variant="outlined"
+        fullWidth
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        sx={{ marginBottom: 2 }}
+      />
+      <Box border="1px solid #333" width="800px">
         <Box
-          width="800px"
+          width="100%"
           height="100px"
           bgcolor="#ADD8E6"
           display="flex"
@@ -148,28 +168,26 @@ export default function Home() {
             Inventory Items
           </Typography>
         </Box>
-        <Stack width="800px" height="300px" spacing={2} overflow="auto">
-          {inventory.map(({ name, quantity }) => (
-            <Box
-              key={name}
-              width="100%"
-              minHeight="150px"
-              display="flex"
-              justifyContent="space-between"
-              alignItems="center"
-              bgcolor="#f0f0f0"
-              paddingX={5}
-            >
-              <Typography variant="h3" color="#333" textAlign="center">
-                {name.charAt(0).toUpperCase() + name.slice(1)}
-              </Typography>
-              <Typography variant="h3" color="#333" textAlign="center">
-                Quantity: {quantity}
-              </Typography>
-              <Button variant="contained" onClick={() => removeItem(name)}>
-                Remove
-              </Button>
-            </Box>
+        <Stack spacing={2} overflow="auto" p={2}>
+          {filteredInventory.map(({ name, quantity, category }) => (
+            <Card key={name} sx={{ minWidth: 275 }}>
+              <CardContent>
+                <Typography variant="h5" component="div">
+                  {name.charAt(0).toUpperCase() + name.slice(1)}
+                </Typography>
+                <Typography sx={{ mb: 1.5 }} color="text.secondary">
+                  Category: {category}
+                </Typography>
+                <Typography variant="body2">
+                  Quantity: {quantity}
+                </Typography>
+              </CardContent>
+              <CardActions>
+                <IconButton onClick={() => removeItem(name)}>
+                  <Delete />
+                </IconButton>
+              </CardActions>
+            </Card>
           ))}
         </Stack>
       </Box>
